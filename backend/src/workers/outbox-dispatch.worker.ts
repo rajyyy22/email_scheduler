@@ -109,53 +109,82 @@ export function createOutboxDispatchWorker(workerId: string) {
           }
         }
 
-        // 5. Update MySQL inside transaction
-        await prisma.$transaction(async (tx) => {
-          for (const email of emails) {
-            const res = reservationMap.get(`${email.id}-a1`);
-            if (!res) continue;
+        // 5. Update MySQL inside transaction (bulk optimized with 60s timeout)
+        await prisma.$transaction(
+          async (tx) => {
+            const attemptRecords: Array<{
+              emailId: string;
+              attemptNumber: number;
+              reservationId: string;
+              reservedAt: Date;
+              scheduledAt: Date;
+              status: AttemptStatus;
+            }> = [];
 
-            const scheduledAt = new Date(res.scheduledMs);
-            const bullJobId = `email-send-${email.id}`;
+            const emailUpdatePromises: Promise<any>[] = [];
 
-            await tx.email.update({
-              where: { id: email.id },
-              data: {
-                status: EmailStatus.SCHEDULED,
-                scheduledAt,
-                bullJobId,
-                attemptCount: 1,
-              },
-            });
+            for (const email of emails) {
+              const res = reservationMap.get(`${email.id}-a1`);
+              if (!res) continue;
 
-            await tx.emailAttempt.create({
-              data: {
+              const scheduledAt = new Date(res.scheduledMs);
+              const bullJobId = `email-send-${email.id}`;
+
+              emailUpdatePromises.push(
+                tx.email.update({
+                  where: { id: email.id },
+                  data: {
+                    status: EmailStatus.SCHEDULED,
+                    scheduledAt,
+                    bullJobId,
+                    attemptCount: 1,
+                  },
+                }),
+              );
+
+              attemptRecords.push({
                 emailId: email.id,
                 attemptNumber: 1,
                 reservationId: res.reservationId,
                 reservedAt: new Date(),
                 scheduledAt,
                 status: AttemptStatus.RESERVED,
+              });
+            }
+
+            // Run email updates concurrently inside transaction
+            await Promise.all(emailUpdatePromises);
+
+            // Bulk insert all attempts in ONE single SQL round-trip
+            if (attemptRecords.length > 0) {
+              await tx.emailAttempt.createMany({
+                data: attemptRecords,
+              });
+            }
+
+            // Update campaign status
+            await tx.campaign.update({
+              where: { id: campaignId },
+              data: {
+                status: CampaignStatus.SCHEDULED,
+                scheduledCount: emails.length,
               },
             });
-          }
 
-          await tx.campaign.update({
-            where: { id: campaignId },
-            data: {
-              status: CampaignStatus.SCHEDULED,
-              scheduledCount: emails.length,
-            },
-          });
-
-          await tx.outboxEvent.update({
-            where: { id: outboxEventId },
-            data: {
-              status: OutboxStatus.DONE,
-              processedAt: new Date(),
-            },
-          });
-        });
+            // Mark outbox event as DONE
+            await tx.outboxEvent.update({
+              where: { id: outboxEventId },
+              data: {
+                status: OutboxStatus.DONE,
+                processedAt: new Date(),
+              },
+            });
+          },
+          {
+            timeout: 60000, // 60s timeout to easily tolerate cloud database network latency
+            maxWait: 15000,
+          },
+        );
 
         // 6. Bulk enqueue delayed jobs into BullMQ
         const bulkJobs = emails.map((email) => {
