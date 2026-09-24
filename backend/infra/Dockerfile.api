@@ -1,0 +1,38 @@
+# Multi-stage production build for ReachInbox Express API
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+RUN npm install -g pnpm@12.5.1
+
+COPY pnpm-workspace.yaml package.json tsconfig.base.json ./
+COPY packages/ ./packages/
+COPY apps/api/ ./apps/api/
+COPY prisma/ ./prisma/
+
+RUN pnpm install --frozen-lockfile || pnpm install
+RUN pnpm --filter @reachinbox/shared-types build
+RUN pnpm --filter @reachinbox/api prisma generate --schema=../../prisma/schema.prisma
+RUN pnpm --filter @reachinbox/api build
+
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+RUN npm install -g pnpm@12.5.1
+
+COPY --from=builder /app/pnpm-workspace.yaml /app/package.json ./
+COPY --from=builder /app/packages/shared-types/package.json ./packages/shared-types/
+COPY --from=builder /app/packages/shared-types/dist ./packages/shared-types/dist
+COPY --from=builder /app/apps/api/package.json ./apps/api/
+COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY --from=builder /app/apps/api/src/infrastructure/redis/rate-limiter.lua ./apps/api/dist/infrastructure/redis/rate-limiter.lua
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
+
+EXPOSE 4000
+
+CMD ["node", "apps/api/dist/server.js"]

@@ -1,0 +1,29 @@
+{
+  "name": "reachinbox-scheduler-root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Production-Grade Full-Stack Email Scheduling & Sending Platform",
+  "scripts": {
+    "dev": "concurrently -n \"api,worker,frontend\" -c \"blue,green,magenta\" \"npm run dev:api\" \"npm run dev:worker\" \"npm run dev:frontend\"",
+    "dev:api": "npm run dev:api --prefix backend",
+    "dev:worker": "npm run dev:worker --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "build": "pnpm -r build",
+    "prisma:generate": "npm run prisma:generate --prefix backend",
+    "prisma:push": "npm run prisma:push --prefix backend",
+    "test": "npm run test --prefix backend",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md}\""
+  },
+  "devDependencies": {
+    "@prisma/client": "5.22.0",
+    "@types/node": "^20.12.7",
+    "concurrently": "^10.0.5",
+    "prettier": "^3.2.5",
+    "prisma": "5.22.0",
+    "rimraf": "^5.0.5",
+    "tsx": "^4.7.2",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  },
+  "packageManager": "pnpm@12.5.1"
+}

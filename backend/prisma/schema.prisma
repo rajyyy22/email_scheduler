@@ -1,0 +1,269 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum CampaignStatus {
+  SCHEDULE_PENDING
+  SCHEDULED
+  RUNNING
+  COMPLETED
+  COMPLETED_WITH_FAILURES
+  CANCELLED
+  FAILED
+}
+
+enum EmailStatus {
+  SCHEDULE_PENDING
+  SCHEDULED
+  SENDING
+  SENT
+  FAILED
+}
+
+enum AttemptStatus {
+  RESERVED
+  SENDING
+  SENT
+  FAILED
+  UNKNOWN
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+model User {
+  id               String            @id @default(uuid()) @db.VarChar(36)
+  googleSub        String            @unique @map("google_sub") @db.VarChar(128)
+  email            String            @unique @db.VarChar(255)
+  name             String            @db.VarChar(255)
+  avatarUrl        String?           @map("avatar_url") @db.VarChar(1024)
+  createdAt        DateTime          @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime          @updatedAt @map("updated_at") @db.DateTime(3)
+
+  senders          Sender[]
+  campaigns        Campaign[]
+  emails           Email[]
+  slackConnections SlackConnection[]
+  idempotencyKeys  IdempotencyKey[]
+
+  @@map("users")
+}
+
+model Sender {
+  id                     String     @id @default(uuid()) @db.VarChar(36)
+  userId                 String     @map("user_id") @db.VarChar(36)
+  displayName            String     @map("display_name") @db.VarChar(255)
+  fromEmail              String     @map("from_email") @db.VarChar(255)
+  fromName               String     @map("from_name") @db.VarChar(255)
+
+  smtpHost               String     @map("smtp_host") @db.VarChar(255)
+  smtpPort               Int        @map("smtp_port")
+  smtpSecure             Boolean    @default(false) @map("smtp_secure")
+  smtpUsernameEncrypted  String     @map("smtp_username_encrypted") @db.Text
+  smtpPasswordEncrypted  String     @map("smtp_password_encrypted") @db.Text
+
+  hourlyLimit            Int        @default(100) @map("hourly_limit")
+  minimumDelayMs         Int        @default(2000) @map("minimum_delay_ms")
+  isActive               Boolean    @default(true) @map("is_active")
+
+  createdAt              DateTime   @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt              DateTime   @updatedAt @map("updated_at") @db.DateTime(3)
+
+  user                   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaigns              Campaign[]
+  emails                 Email[]
+
+  @@index([userId, isActive], name: "idx_senders_user_active")
+  @@map("senders")
+}
+
+model Campaign {
+  id                                String         @id @default(uuid()) @db.VarChar(36)
+  userId                            String         @map("user_id") @db.VarChar(36)
+  senderId                          String         @map("sender_id") @db.VarChar(36)
+
+  subject                           String         @db.VarChar(255)
+  body                              String         @db.LongText
+
+  requestedStartAt                  DateTime       @map("requested_start_at") @db.DateTime(3)
+
+  minimumDelayMs                    Int            @map("minimum_delay_ms")
+  hourlyLimit                       Int            @map("hourly_limit")
+
+  senderHourlyLimitSnapshot         Int            @map("sender_hourly_limit_snapshot")
+  senderMinimumDelayMsSnapshot      Int            @map("sender_minimum_delay_ms_snapshot")
+
+  totalRecipients                   Int            @default(0) @map("total_recipients")
+  scheduledCount                    Int            @default(0) @map("scheduled_count")
+  sentCount                         Int            @default(0) @map("sent_count")
+  failedCount                       Int            @default(0) @map("failed_count")
+
+  status                            CampaignStatus @default(SCHEDULE_PENDING)
+
+  createdAt                         DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt                         DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+
+  user                              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sender                            Sender         @relation(fields: [senderId], references: [id], onDelete: Restrict)
+  emails                            Email[]
+
+  @@index([userId, status, createdAt], name: "idx_campaigns_user_status_created")
+  @@index([senderId, status], name: "idx_campaigns_sender_status")
+  @@map("campaigns")
+}
+
+model Email {
+  id                String         @id @default(uuid()) @db.VarChar(36)
+  userId            String         @map("user_id") @db.VarChar(36)
+  campaignId        String         @map("campaign_id") @db.VarChar(36)
+  senderId          String         @map("sender_id") @db.VarChar(36)
+
+  sequenceNo        Int            @map("sequence_no")
+  recipientEmail    String         @map("recipient_email") @db.VarChar(255)
+
+  requestedAt       DateTime       @map("requested_at") @db.DateTime(3)
+  scheduledAt       DateTime?      @map("scheduled_at") @db.DateTime(3)
+  sentAt            DateTime?      @map("sent_at") @db.DateTime(3)
+  failedAt          DateTime?      @map("failed_at") @db.DateTime(3)
+
+  status            EmailStatus    @default(SCHEDULE_PENDING)
+  attemptCount      Int            @default(0) @map("attempt_count")
+
+  lockedAt          DateTime?      @map("locked_at") @db.DateTime(3)
+  lockedBy          String?        @map("locked_by") @db.VarChar(128)
+
+  providerMessageId String?        @map("provider_message_id") @db.VarChar(255)
+  previewUrl        String?        @map("preview_url") @db.VarChar(1024)
+
+  lastErrorCode     String?        @map("last_error_code") @db.VarChar(64)
+  lastErrorMessage  String?        @map("last_error_message") @db.Text
+  lastErrorAt       DateTime?      @map("last_error_at") @db.DateTime(3)
+
+  bullJobId         String?        @map("bull_job_id") @db.VarChar(128)
+  searchIndexedAt   DateTime?      @map("search_indexed_at") @db.DateTime(3)
+
+  createdAt         DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign          Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  sender            Sender         @relation(fields: [senderId], references: [id], onDelete: Restrict)
+  attempts          EmailAttempt[]
+
+  @@unique([campaignId, sequenceNo], name: "uq_campaign_sequence")
+  @@index([userId, status, scheduledAt], name: "idx_emails_user_status_sched")
+  @@index([senderId, status, scheduledAt], name: "idx_emails_sender_status_sched")
+  @@index([recipientEmail], name: "idx_emails_recipient")
+  @@index([bullJobId], name: "idx_emails_bull_job")
+  @@index([providerMessageId], name: "idx_emails_provider_msg")
+  @@map("emails")
+}
+
+model EmailAttempt {
+  id              String        @id @default(uuid()) @db.VarChar(36)
+  emailId         String        @map("email_id") @db.VarChar(36)
+  attemptNumber   Int           @map("attempt_number")
+  reservationId   String        @unique @map("reservation_id") @db.VarChar(128)
+
+  reservedAt      DateTime      @map("reserved_at") @db.DateTime(3)
+  scheduledAt     DateTime      @map("scheduled_at") @db.DateTime(3)
+
+  startedAt       DateTime?     @map("started_at") @db.DateTime(3)
+  finishedAt      DateTime?     @map("finished_at") @db.DateTime(3)
+
+  status          AttemptStatus @default(RESERVED)
+  smtpMessageId   String?       @map("smtp_message_id") @db.VarChar(255)
+
+  errorCode       String?       @map("error_code") @db.VarChar(64)
+  errorMessage    String?       @map("error_message") @db.Text
+
+  createdAt       DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+
+  email           Email         @relation(fields: [emailId], references: [id], onDelete: Cascade)
+
+  @@unique([emailId, attemptNumber], name: "uq_email_attempt")
+  @@index([emailId, status], name: "idx_attempts_email_status")
+  @@map("email_attempts")
+}
+
+model SlackConnection {
+  id                   String    @id @default(uuid()) @db.VarChar(36)
+  userId               String    @map("user_id") @db.VarChar(36)
+
+  teamId               String    @map("team_id") @db.VarChar(64)
+  teamName             String    @map("team_name") @db.VarChar(255)
+
+  channelId            String    @map("channel_id") @db.VarChar(64)
+  channelName          String    @map("channel_name") @db.VarChar(255)
+
+  webhookUrlEncrypted  String    @map("webhook_url_encrypted") @db.Text
+  scope                String    @db.VarChar(255)
+
+  connectedAt          DateTime  @default(now()) @map("connected_at") @db.DateTime(3)
+  disconnectedAt       DateTime? @map("disconnected_at") @db.DateTime(3)
+
+  createdAt            DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId], name: "uq_user_team")
+  @@index([userId, disconnectedAt], name: "idx_slack_user_active")
+  @@map("slack_connections")
+}
+
+model OutboxEvent {
+  id            String       @id @default(uuid()) @db.VarChar(36)
+  eventType     String       @map("event_type") @db.VarChar(64)
+  aggregateType String       @map("aggregate_type") @db.VarChar(64)
+  aggregateId   String       @map("aggregate_id") @db.VarChar(36)
+
+  payload       String       @db.LongText
+
+  status        OutboxStatus @default(PENDING)
+  attempts      Int          @default(0)
+  availableAt   DateTime     @default(now()) @map("available_at") @db.DateTime(3)
+
+  lockedAt      DateTime?    @map("locked_at") @db.DateTime(3)
+  lockedBy      String?      @map("locked_by") @db.VarChar(128)
+
+  lastError     String?      @map("last_error") @db.Text
+  lastErrorAt   DateTime?    @map("last_error_at") @db.DateTime(3)
+
+  processedAt   DateTime?    @map("processed_at") @db.DateTime(3)
+
+  createdAt     DateTime     @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@unique([eventType, aggregateId], name: "uq_event_aggregate")
+  @@index([status, availableAt], name: "idx_outbox_status_available")
+  @@map("outbox_events")
+}
+
+model IdempotencyKey {
+  id             String    @id @default(uuid()) @db.VarChar(36)
+  userId         String    @map("user_id") @db.VarChar(36)
+  idempotencyKey String    @map("idempotency_key") @db.VarChar(128)
+  requestHash    String    @map("request_hash") @db.VarChar(64)
+
+  responseStatus Int       @map("response_status")
+  responseBody   String    @map("response_body") @db.LongText
+
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  expiresAt      DateTime  @map("expires_at") @db.DateTime(3)
+
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, idempotencyKey], name: "uq_user_idempotency")
+  @@index([expiresAt], name: "idx_idempotency_expires")
+  @@map("idempotency_keys")
+}

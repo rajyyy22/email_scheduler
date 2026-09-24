@@ -1,0 +1,11 @@
+node_modules
+dist
+build
+.env
+*.log
+.system_generated
+.pnpm-store
+coverage
+.turbo
+*.tsbuildinfo
+client_secret_*.json
