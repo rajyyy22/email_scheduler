@@ -26,7 +26,18 @@ export function createApp(): Express {
 
   app.use(
     cors({
-      origin: env.FRONTEND_URL,
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        if (
+          origin === env.FRONTEND_URL ||
+          origin.endsWith('.github.io') ||
+          origin.includes('localhost') ||
+          origin.includes('127.0.0.1')
+        ) {
+          return callback(null, true);
+        }
+        return callback(null, true);
+      },
       credentials: true,
       allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'x-request-id'],
       exposedHeaders: ['x-request-id'],

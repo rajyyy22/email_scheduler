@@ -1,4 +1,25 @@
-const BASE_URL = '/api/v1';
+export const API_BASE_URL =
+  import.meta.env.VITE_API_URL !== undefined
+    ? import.meta.env.VITE_API_URL
+    : import.meta.env.DEV
+      ? ''
+      : 'https://reachinbox-api-j1ae.onrender.com';
+
+const BASE_URL = `${API_BASE_URL}/api/v1`;
+
+const TOKEN_KEY = 'reachinbox_token';
+
+export function getAuthToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setAuthToken(token: string | null): void {
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(TOKEN_KEY);
+  }
+}
 
 export interface User {
   id: string;
@@ -134,8 +155,10 @@ export interface CampaignSchedulePreview {
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const isFormData = options.body instanceof FormData;
+  const token = getAuthToken();
   const headers: Record<string, string> = {
     ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers as Record<string, string> || {}),
   };
 
@@ -162,12 +185,24 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 export const api = {
   auth: {
     getMe: () => request<{ user: User }>('/auth/me'),
-    logout: () => request<{ success: boolean }>('/auth/logout', { method: 'POST' }),
-    devLogin: (email?: string, name?: string) =>
-      request<{ success: boolean; user: User }>('/auth/dev-login', {
+    logout: async () => {
+      try {
+        await request<{ success: boolean }>('/auth/logout', { method: 'POST' });
+      } finally {
+        setAuthToken(null);
+      }
+      return { success: true };
+    },
+    devLogin: async (email?: string, name?: string) => {
+      const res = await request<{ success: boolean; user: User; sessionId?: string }>('/auth/dev-login', {
         method: 'POST',
         body: JSON.stringify({ email, name }),
-      }),
+      });
+      if (res.sessionId) {
+        setAuthToken(res.sessionId);
+      }
+      return res;
+    },
   },
 
   senders: {

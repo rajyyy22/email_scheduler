@@ -26,7 +26,9 @@ export async function authMiddleware(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const sessionId = req.cookies?.[SESSION_COOKIE_NAME];
+    const authHeader = req.headers.authorization;
+    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    const sessionId = req.cookies?.[SESSION_COOKIE_NAME] || bearerToken;
 
     if (!sessionId) {
       return next(new AppError(401, ErrorCode.UNAUTHORIZED, 'Authentication required'));

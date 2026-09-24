@@ -37,12 +37,13 @@ export class AuthController {
       res.cookie(SESSION_COOKIE_NAME, sessionId, {
         httpOnly: true,
         secure: env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
         maxAge: env.SESSION_TTL_SECONDS * 1000,
         path: '/',
       });
 
-      res.redirect(`${env.FRONTEND_URL}/`);
+      const frontendBase = env.FRONTEND_URL.replace(/\/+$/, '');
+      res.redirect(`${frontendBase}/?token=${sessionId}`);
     } catch (err) {
       console.error('Google OAuth callback error:', err);
       res.redirect(`${env.FRONTEND_URL}/?error=auth_failed`);
@@ -84,12 +85,12 @@ export class AuthController {
       res.cookie(SESSION_COOKIE_NAME, sessionId, {
         httpOnly: true,
         secure: env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
         maxAge: env.SESSION_TTL_SECONDS * 1000,
         path: '/',
       });
 
-      res.json({ success: true, user });
+      res.json({ success: true, user, sessionId });
     } catch (err) {
       next(err);
     }
