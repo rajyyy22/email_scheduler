@@ -28,7 +28,8 @@ export async function authMiddleware(
   try {
     const authHeader = req.headers.authorization;
     const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-    const sessionId = req.cookies?.[SESSION_COOKIE_NAME] || bearerToken;
+    const queryToken = typeof req.query?.token === 'string' ? (req.query.token as string) : null;
+    const sessionId = req.cookies?.[SESSION_COOKIE_NAME] || bearerToken || queryToken;
 
     if (!sessionId) {
       return next(new AppError(401, ErrorCode.UNAUTHORIZED, 'Authentication required'));

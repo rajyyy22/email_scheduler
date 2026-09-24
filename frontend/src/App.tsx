@@ -34,6 +34,7 @@ import {
 import {
   api,
   API_BASE_URL,
+  getAuthToken,
   setAuthToken,
   type User,
   type Sender,
@@ -359,7 +360,7 @@ export function App() {
               <kbd><Command size={12} />K</kbd>
             </button>
             <a
-              href="http://localhost:4000/admin/queues"
+              href={`${API_BASE_URL || 'http://localhost:4000'}/admin/queues${getAuthToken() ? `?token=${getAuthToken()}` : ''}`}
               target="_blank"
               rel="noopener noreferrer"
               className="icon-button"
@@ -2097,7 +2098,6 @@ function CampaignModal({
                       value={selectedSenderId}
                       onChange={(e) => setSelectedSenderId(e.target.value)}
                       className="input-select"
-                      style={{ width: '100%', height: 42, background: 'var(--panel-dark)', color: '#fff' }}
                       required
                     >
                       {activeSenders.map((s) => (
@@ -2285,15 +2285,6 @@ function CampaignModal({
                         type="datetime-local"
                         value={startDateStr}
                         onChange={(e) => setStartDateStr(e.target.value)}
-                        style={{
-                          width: '100%',
-                          height: 42,
-                          background: 'var(--panel-dark)',
-                          border: '1px solid var(--border-color)',
-                          borderRadius: 8,
-                          padding: '0 12px',
-                          color: '#fff',
-                        }}
                         required
                       />
                     </div>

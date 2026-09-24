@@ -133,15 +133,37 @@ The application is pre-configured to connect to Cloud MySQL (Aiven) and Cloud Re
 npm run prisma:push
 ```
 
-### 4. Start Development Servers
+### 4. Running the Application
 
-You can start all services in a single command using standard `npm`:
+You have two simple options depending on whether you want to use the **Cloud Backend (Render)** or run everything **Locally**:
+
+#### Option A: Develop Frontend Locally Connected to Render Backend (Recommended & Fastest)
+Since your backend and BullMQ email worker are already live and running on Render:
+1. Ensure `frontend/.env` contains:
+   ```env
+   VITE_API_URL=https://reachinbox-api-j1ae.onrender.com
+   ```
+2. Start only the frontend:
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+3. Open `http://localhost:3000` — all campaigns, email dispatches, and rate limiting will be processed by the live Render backend and its embedded BullMQ worker!
+
+#### Option B: Full-Stack Local Development (Self-Hosted with Local Services)
+If you want to run MySQL, Redis, API, and workers entirely offline on your machine:
 ```bash
+# Generate Prisma Client
+npm run prisma:generate
+
+# Push schema to local MySQL
+npm run prisma:push
+
+# Start all three services concurrently (API, BullMQ Worker, Frontend)
 npm run dev
 ```
-*(Starts Express API on port 4000, BullMQ Worker, and ReachInbox Frontend on port 3000 concurrently with colored logs).*
 
-Or run them individually in separate terminals:
+Or run them in separate terminals:
 ```bash
 # Terminal 1: Express REST API (Port 4000)
 npm run dev:api
@@ -149,14 +171,23 @@ npm run dev:api
 # Terminal 2: Distributed BullMQ Queue Worker
 npm run dev:worker
 
-# Terminal 3: Integrated ReachInbox Frontend (Port 3000)
+# Terminal 3: ReachInbox Frontend (Port 3000)
 npm run dev:frontend
 ```
 
-Open your browser at:
-* **Frontend Dashboard**: `http://localhost:3000`
-* **Express API Health**: `http://localhost:4000/health/ready`
-* **Bull Board Dashboard**: `http://localhost:4000/admin/queues`
+---
+
+## 🌐 Live Deployments & Cloud Architecture
+
+| Service | Host / Platform | URL |
+| :--- | :--- | :--- |
+| **Frontend Web App** | GitHub Pages | [https://rajyyy22.github.io/email_scheduler/](https://rajyyy22.github.io/email_scheduler/) |
+| **API Server & Embedded Worker** | Render Cloud | [https://reachinbox-api-j1ae.onrender.com](https://reachinbox-api-j1ae.onrender.com) |
+| **Health Check Endpoint** | Render Cloud | [https://reachinbox-api-j1ae.onrender.com/health/ready](https://reachinbox-api-j1ae.onrender.com/health/ready) |
+| **Bull Board Queue Dashboard** | Render Cloud | [https://reachinbox-api-j1ae.onrender.com/admin/queues](https://reachinbox-api-j1ae.onrender.com/admin/queues) |
+
+> [!NOTE]
+> The backend on Render automatically runs the embedded BullMQ email workers upon boot (via `startWorker({ standalone: false })` in `src/server.ts`). You do not need to host or run a separate worker process when using Render.
 
 ---
 
