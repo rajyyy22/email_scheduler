@@ -9,9 +9,9 @@ import { ErrorCode, type UserDto } from '../../types/index.js';
 
 export class AuthService {
   private static oauthClient = new OAuth2Client(
-    env.GOOGLE_CLIENT_ID,
-    env.GOOGLE_CLIENT_SECRET,
-    env.GOOGLE_CALLBACK_URL,
+    env.GOOGLE_CLIENT_ID.trim().replace(/[\r\n]+/g, ''),
+    env.GOOGLE_CLIENT_SECRET.trim().replace(/[\r\n]+/g, ''),
+    env.GOOGLE_CALLBACK_URL.trim().replace(/[\r\n]+/g, ''),
   );
 
   public static async generateGoogleAuthUrl(): Promise<{ url: string; state: string }> {

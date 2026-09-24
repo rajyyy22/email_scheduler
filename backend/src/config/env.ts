@@ -49,7 +49,12 @@ const envSchema = z.object({
 export type EnvConfig = z.infer<typeof envSchema>;
 
 function validateEnv(): EnvConfig {
-  const result = envSchema.safeParse(process.env);
+  const cleaned: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    cleaned[key] = typeof value === 'string' ? value.trim() : value;
+  }
+
+  const result = envSchema.safeParse(cleaned);
   if (!result.success) {
     console.error('❌ Invalid environment variables:', JSON.stringify(result.error.format(), null, 2));
     throw new Error('Invalid environment configuration');
