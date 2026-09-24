@@ -4,6 +4,7 @@ import { env } from './config/env.js';
 import { prisma } from './infrastructure/database/prisma.js';
 import { redis } from './infrastructure/redis/redis.js';
 import { initElasticsearchIndex } from './infrastructure/elasticsearch/es-client.js';
+import { startWorker } from './worker.js';
 
 async function bootstrap() {
   const app = createApp();
@@ -13,6 +14,18 @@ async function bootstrap() {
   initElasticsearchIndex().catch((err) => {
     console.warn('Initial Elasticsearch index check failed:', err.message);
   });
+
+  // Start embedded BullMQ workers unless explicitly disabled with RUN_WORKER=false
+  let workerHandle: { stop: () => Promise<void> } | null = null;
+  if (process.env.RUN_WORKER !== 'false') {
+    startWorker({ standalone: false })
+      .then((handle) => {
+        workerHandle = handle;
+      })
+      .catch((err) => {
+        console.warn('Failed to start embedded worker:', err.message);
+      });
+  }
 
   server.listen(env.PORT, () => {
     console.log(`🚀 ReachInbox API server listening on http://localhost:${env.PORT}`);
@@ -26,6 +39,9 @@ async function bootstrap() {
     server.close(async () => {
       console.log('HTTP server closed.');
       try {
+        if (workerHandle) {
+          await workerHandle.stop();
+        }
         await redis.quit();
         console.log('Redis connection closed.');
         await prisma.$disconnect();

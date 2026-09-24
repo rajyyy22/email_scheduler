@@ -9,7 +9,7 @@ import { createSlackNotificationWorker } from './workers/slack-notification.work
 import { createEmailIndexWorker } from './workers/email-index.worker.js';
 import { OutboxStatus } from './types/index.js';
 
-async function bootstrap() {
+export async function startWorker(options: { standalone?: boolean } = {}) {
   const workerId = `worker_${uuidv4().substring(0, 8)}`;
   console.log(`🚀 Starting ReachInbox Worker Process: ${workerId}`);
 
@@ -85,39 +85,49 @@ async function bootstrap() {
     }
   }, 60000);
 
-  // 4. Graceful shutdown
-  const shutdown = async (signal: string) => {
-    console.log(`\n${signal} received. Closing workers gracefully...`);
+  const stop = async () => {
     clearInterval(recoveryInterval);
     clearInterval(reaperInterval);
-
-    try {
-      await Promise.all([
-        outboxWorker.close(),
-        emailWorker.close(),
-        slackWorker.close(),
-        indexWorker.close(),
-      ]);
-      console.log('BullMQ workers halted.');
-
-      await redis.quit();
-      console.log('Redis connection closed.');
-
-      await prisma.$disconnect();
-      console.log('MySQL connection pool closed.');
-
-      process.exit(0);
-    } catch (err) {
-      console.error('Error during worker shutdown:', err);
-      process.exit(1);
-    }
+    await Promise.all([
+      outboxWorker.close(),
+      emailWorker.close(),
+      slackWorker.close(),
+      indexWorker.close(),
+    ]);
+    console.log('BullMQ workers halted.');
   };
 
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT', () => shutdown('SIGINT'));
+  if (options.standalone) {
+    const shutdown = async (signal: string) => {
+      console.log(`\n${signal} received. Closing workers gracefully...`);
+      try {
+        await stop();
+        await redis.quit();
+        console.log('Redis connection closed.');
+        await prisma.$disconnect();
+        console.log('MySQL connection pool closed.');
+        process.exit(0);
+      } catch (err) {
+        console.error('Error during worker shutdown:', err);
+        process.exit(1);
+      }
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+  }
+
+  return { stop };
 }
 
-bootstrap().catch((err) => {
-  console.error('Fatal worker process error:', err);
-  process.exit(1);
-});
+// Auto-run if executed directly as entrypoint
+const isMain =
+  Boolean(process.argv[1]) &&
+  (process.argv[1].endsWith('worker.js') || process.argv[1].endsWith('worker.ts'));
+
+if (isMain) {
+  startWorker({ standalone: true }).catch((err) => {
+    console.error('Fatal worker process error:', err);
+    process.exit(1);
+  });
+}

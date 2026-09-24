@@ -9,6 +9,7 @@
     "dev:worker": "tsx watch src/worker.ts",
     "build": "tsc",
     "start": "node dist/server.js",
+    "start:worker": "node dist/worker.js",
     "prisma:generate": "prisma generate --schema=prisma/schema.prisma",
     "prisma:push": "prisma db push --schema=prisma/schema.prisma",
     "prisma:migrate": "prisma db push --schema=prisma/schema.prisma",
