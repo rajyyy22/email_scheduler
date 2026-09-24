@@ -1,10 +1,5 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { redis } from './redis.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { RATE_LIMITER_LUA_SCRIPT } from './rate-limiter.lua.js';
 
 export interface ReservationItem {
   reservationId: string;
@@ -28,9 +23,7 @@ export class RateLimiterService {
 
   public static async initScript(): Promise<string> {
     if (!this.scriptSha) {
-      const scriptPath = path.join(__dirname, 'rate-limiter.lua');
-      const scriptContent = fs.readFileSync(scriptPath, 'utf8');
-      this.scriptSha = await redis.script('LOAD', scriptContent) as string;
+      this.scriptSha = (await redis.script('LOAD', RATE_LIMITER_LUA_SCRIPT)) as string;
     }
     return this.scriptSha;
   }

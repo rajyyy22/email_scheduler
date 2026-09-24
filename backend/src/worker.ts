@@ -25,13 +25,36 @@ export async function startWorker(options: { standalone?: boolean } = {}) {
   console.log('   - slack-notification-v1');
   console.log('   - email-index-v1');
 
-  // 2. Outbox Recovery Loop: Polls every 30s for any stuck PENDING outbox events (crash safety fallback)
+  // 2. Outbox Recovery Loop: Polls every 30s for any stuck PENDING, stale PROCESSING, or retryable FAILED outbox events
   const recoveryInterval = setInterval(async () => {
     try {
+      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+
+      // Reclaim orphaned PROCESSING events (crashed worker)
+      await prisma.outboxEvent.updateMany({
+        where: {
+          status: OutboxStatus.PROCESSING,
+          lockedAt: { lte: twoMinutesAgo },
+        },
+        data: {
+          status: OutboxStatus.PENDING,
+          lockedAt: null,
+          lockedBy: null,
+        },
+      });
+
       const stuckEvents = await prisma.outboxEvent.findMany({
         where: {
-          status: OutboxStatus.PENDING,
-          availableAt: { lte: new Date() },
+          OR: [
+            {
+              status: OutboxStatus.PENDING,
+              availableAt: { lte: new Date() },
+            },
+            {
+              status: OutboxStatus.FAILED,
+              attempts: { lt: 5 },
+            },
+          ],
         },
         take: 10,
       });
@@ -40,7 +63,7 @@ export async function startWorker(options: { standalone?: boolean } = {}) {
         await outboxDispatchQueue.add(
           JOB_NAMES.OUTBOX_DISPATCH,
           { version: 1, outboxEventId: event.id },
-          { jobId: `outbox-dispatch-${event.id}` },
+          { jobId: `outbox-dispatch-${event.id}-${Date.now()}` },
         );
       }
     } catch (err: any) {
